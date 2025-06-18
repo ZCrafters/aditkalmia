@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Penjualan Interaktif - Toko Kalmia</title>
+    
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Chart.js for interactive charts -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    
+    <!-- SheetJS (xlsx) for reading Excel files -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- Font Awesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+
+
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #111827; /* bg-gray-900 */
+            color: #d1d5db; /* text-gray-300 */
+        }
+        .summary-card {
+            background-color: #1f2937; /* bg-gray-800 */
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            border: 1px solid #374151; /* border-gray-700 */
+            transition: all 0.3s ease;
+        }
+        .summary-card:hover {
+            transform: translateY(-5px);
+            border-color: #4b5563; /* border-gray-600 */
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+        }
+        .chart-container, .pivot-container {
+            background-color: #1f2937; /* bg-gray-800 */
+            border-radius: 0.75rem;
+            padding: 1.5rem;
+            border: 1px solid #374151; /* border-gray-700 */
+        }
+        .sidebar {
+            background-color: #1f2937; /* bg-gray-800 */
+        }
+        .upload-area {
+            border: 2px dashed #4b5563; /* border-gray-600 */
+            background-color: #374151; /* bg-gray-700 */
+            transition: all 0.3s ease;
+        }
+        .upload-area.dragover {
+             border-color: #9ca3af; /* border-gray-400 */
+             background-color: #4b5563; /* bg-gray-600 */
+        }
+        
+        /* Custom scrollbar for dark theme */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1f2937; /* bg-gray-800 */
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #4b5563; /* bg-gray-600 */
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #6b7280; /* bg-gray-500 */
+        }
+
+        /* ✨ Animasi */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        .animate-fadeInUp {
+            animation-name: fadeInUp;
+            animation-duration: 0.6s;
+            animation-fill-mode: both;
+            animation-timing-function: ease-out;
+        }
+        .animate-fadeIn {
+            animation-name: fadeIn;
+            animation-duration: 0.5s;
+            animation-fill-mode: both;
+        }
+    </style>
+</head>
+<body class="text-gray-300">
+
+    <div class="flex h-screen overflow-hidden">
+        <!-- Sidebar for controls -->
+        <aside class="sidebar w-72 h-full overflow-y-auto p-6 border-r border-gray-700 shadow-lg flex-shrink-0">
+            <div class="flex items-center mb-6">
+                 <svg xmlns="http://www.w3.org/2000/svg" class="h-8 w-8 text-gray-300 mr-3" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clip-rule="evenodd" />
+                </svg>
+                <h1 class="text-xl font-bold text-white">Dashboard</h1>
+            </div>
+            
+            <div id="filter-section" class="hidden space-y-6">
+                <hr class="border-gray-600">
+                <h2 class="text-lg font-semibold text-white">🔍 Filter Interaktif</h2>
+                <div>
+                    <label for="dateRange" class="block text-sm font-medium text-gray-400 mb-2">Rentang Tanggal</label>
+                    <div class="flex items-center space-x-2">
+                       <input type="date" id="startDate" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-gray-500 focus:border-gray-500 text-white">
+                       <span class="text-gray-500">-</span>
+                       <input type="date" id="endDate" class="w-full p-2 bg-gray-700 border border-gray-600 rounded-md focus:ring-gray-500 focus:border-gray-500 text-white">
+                    </div>
+                </div>
+                <div>
+                    <label for="statusFilter" class="block text-sm font-medium text-gray-400 mb-2">Status Transaksi</label>
+                    <div id="statusFilter" class="max-h-32 overflow-y-auto space-y-1 p-2 border border-gray-600 rounded-md"></div>
+                </div>
+                <div>
+                    <label for="vendorFilter" class="block text-sm font-medium text-gray-400 mb-2">Vendor Pengiriman</label>
+                    <div id="vendorFilter" class="max-h-32 overflow-y-auto space-y-1 p-2 border border-gray-600 rounded-md"></div>
+                </div>
+                <button id="applyFilter" class="w-full bg-white text-gray-900 font-bold py-2 px-4 rounded-lg hover:bg-gray-200 active:bg-gray-300 transition duration-300 transform active:scale-95">Terapkan Filter</button>
+                <button id="resetFilter" class="w-full bg-gray-700 text-gray-300 font-bold py-2 px-4 rounded-lg hover:bg-gray-600 active:bg-gray-500 transition duration-300 transform active:scale-95">Reset Filter</button>
+            </div>
+        </aside>
+
+        <!-- Main content area -->
+        <main class="flex-1 overflow-y-auto p-6 md:p-8">
+            <div id="dashboard-content">
+                <!-- Upload Section -->
+                <div id="upload-section" class="animate-fadeIn">
+                    <div class="bg-gray-800 rounded-xl shadow-md overflow-hidden mb-8 border border-gray-700">
+                         <div class="bg-gradient-to-r from-gray-900 to-gray-800 p-6">
+                            <div class="flex flex-col md:flex-row items-center justify-between">
+                                <div class="text-white mb-4 md:mb-0">
+                                    <h2 class="text-2xl font-bold mb-2">Analisis Data Penjualan</h2>
+                                    <p class="opacity-90">Unggah file Excel data transaksi untuk memulai analisis</p>
+                                </div>
+                                <div class="relative">
+                                    <label for="fileUpload" class="bg-white text-gray-900 font-medium py-3 px-6 rounded-full cursor-pointer hover:bg-gray-200 transition flex items-center shadow-lg">
+                                        <i class="fas fa-upload mr-2"></i> Pilih File Excel
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="p-8">
+                            <div id="upload-area" class="upload-area p-12 text-center rounded-xl mb-6 cursor-pointer">
+                                <i class="fas fa-file-excel text-gray-400 text-6xl mb-4"></i>
+                                <p class="text-lg font-medium text-white mb-2">Seret file Excel ke sini atau klik untuk memilih file</p>
+                                <p class="text-gray-500 mb-4">Format yang didukung: .xlsx, .xls</p>
+                            </div>
+                            
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                               <div class="bg-gray-700 border border-gray-600 rounded-lg p-4">
+                                    <div class="flex items-center">
+                                        <div class="w-10 h-10 rounded-full bg-blue-900 flex items-center justify-center mr-3 flex-shrink-0">
+                                            <i class="fas fa-info-circle text-blue-300"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-medium text-blue-200">Panduan Unggah File</h3>
+                                            <p class="text-sm text-blue-300 opacity-80">Pastikan format file sesuai dengan template</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="bg-gray-700 border border-gray-600 rounded-lg p-4">
+                                    <div class="flex items-center">
+                                        <div class="w-10 h-10 rounded-full bg-green-900 flex items-center justify-center mr-3 flex-shrink-0">
+                                            <i class="fas fa-bolt text-green-300"></i>
+                                        </div>
+                                        <div>
+                                            <h3 class="font-medium text-green-200">Proses Otomatis</h3>
+                                            <p class="text-sm text-green-300 opacity-80">Pembersihan data akan dilakukan secara otomatis</p>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden file input, controlled by labels -->
+                <input type="file" id="fileUpload" class="hidden" accept=".xlsx, .xls">
+
+                <!-- Loading State -->
+                <div id="loading-state" class="hidden flex flex-col items-center justify-center h-full text-center">
+                    <svg class="animate-spin h-16 w-16 text-gray-400" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    <h2 class="text-xl font-semibold text-gray-300 mt-4">Memproses data...</h2>
+                    <p class="text-gray-500">Mohon tunggu sebentar.</p>
+                </div>
+
+                <!-- Dashboard View -->
+                <div id="main-dashboard" class="hidden">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                        <div class="summary-card"><h3 class="text-gray-400 text-sm font-medium">Total Pendapatan</h3><p id="totalRevenue" class="text-3xl font-bold text-white mt-1">Rp 0</p></div>
+                        <div class="summary-card"><h3 class="text-gray-400 text-sm font-medium">Total Transaksi</h3><p id="totalTransactions" class="text-3xl font-bold text-white mt-1">0</p></div>
+                        <div class="summary-card"><h3 class="text-gray-400 text-sm font-medium">Rata-rata Transaksi</h3><p id="averageTransaction" class="text-3xl font-bold text-white mt-1">Rp 0</p></div>
+                        <div class="summary-card"><h3 class="text-gray-400 text-sm font-medium">Jumlah Pembeli Unik</h3><p id="uniqueCustomers" class="text-3xl font-bold text-white mt-1">0</p></div>
+                    </div>
+                    
+                    <!-- Charts Grid -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+                        <div class="chart-container h-96 flex flex-col">
+                            <h3 class="font-bold text-lg mb-4 text-white flex-shrink-0">📈 Tren Pendapatan Harian</h3>
+                            <div class="relative flex-1 w-full h-full">
+                                <canvas id="revenueTrendChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-container h-96 flex flex-col">
+                            <h3 class="font-bold text-lg mb-4 text-white flex-shrink-0">🚚 Transaksi per Vendor</h3>
+                            <div class="relative flex-1 w-full h-full">
+                                <canvas id="vendorChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-container h-96 flex flex-col">
+                            <h3 class="font-bold text-lg mb-4 text-white flex-shrink-0">💳 Metode Pembayaran</h3>
+                            <div class="relative flex-1 w-full h-full">
+                                <canvas id="paymentMethodChart"></canvas>
+                            </div>
+                        </div>
+                        <div class="chart-container h-96 flex flex-col">
+                            <h3 class="font-bold text-lg mb-4 text-white flex-shrink-0">📊 Status Transaksi</h3>
+                            <div class="relative flex-1 w-full h-full">
+                                <canvas id="statusChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Pivot Tables -->
+                    <div class="space-y-6">
+                        <h2 class="text-2xl font-bold text-white">📋 Analisis Pivot Table</h2>
+                        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div class="pivot-container"><h3 class="font-semibold mb-2 text-white">Pendapatan per Metode Pembayaran</h3><table id="pivotRevenuePayment" class="w-full text-sm text-left"></table></div>
+                            <div class="pivot-container"><h3 class="font-semibold mb-2 text-white">Status per Metode Pembayaran</h3><table id="pivotStatusPayment" class="w-full text-sm text-left"></table></div>
+                             <div class="pivot-container md:col-span-2"><h3 class="font-semibold mb-2 text-white">Produk Terjual per Hari</h3><div id="pivotDailySalesContainer" class="max-h-64 overflow-y-auto"><table id="pivotDailySales" class="w-full text-sm text-left"></table></div></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Global state variables
+        let rawData = [];
+        let charts = {};
+
+        const fileUpload = document.getElementById('fileUpload');
+        const uploadSection = document.getElementById('upload-section');
+        const uploadArea = document.getElementById('upload-area');
+        const loadingState = document.getElementById('loading-state');
+        const mainDashboard = document.getElementById('main-dashboard');
+        const filterSection = document.getElementById('filter-section');
+        const applyFilterBtn = document.getElementById('applyFilter');
+        const resetFilterBtn = document.getElementById('resetFilter');
+
+        // Event listeners for file upload
+        fileUpload.addEventListener('change', handleFileUpload);
+        uploadArea.addEventListener('click', () => fileUpload.click());
+        applyFilterBtn.addEventListener('click', updateDashboard);
+        resetFilterBtn.addEventListener('click', resetFiltersAndApply);
+
+        // Drag and Drop listeners
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, preventDefaults, false);
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+        ['dragenter', 'dragover'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.classList.add('dragover'), false);
+        });
+        ['dragleave', 'drop'].forEach(eventName => {
+            uploadArea.addEventListener(eventName, () => uploadArea.classList.remove('dragover'), false);
+        });
+        uploadArea.addEventListener('drop', handleDrop, false);
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function handleDrop(e) {
+            let dt = e.dataTransfer;
+            let files = dt.files;
+            processFile(files[0]);
+        }
+
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            processFile(file);
+        }
+
+        function processFile(file) {
+            if (file) {
+                uploadSection.classList.add('hidden');
+                loadingState.classList.remove('hidden');
+                mainDashboard.classList.add('hidden');
+                filterSection.classList.add('hidden');
+
+                setTimeout(() => { 
+                    const reader = new FileReader();
+                    reader.onload = function(e) {
+                        const data = new Uint8Array(e.target.result);
+                        const workbook = XLSX.read(data, { type: 'array', cellDates:true });
+                        const firstSheetName = workbook.SheetNames[0];
+                        const worksheet = workbook.Sheets[firstSheetName];
+                        const json = XLSX.utils.sheet_to_json(worksheet);
+                        
+                        rawData = cleanData(json);
+                        
+                        setupFilters(rawData);
+                        updateDashboard();
+                        
+                        loadingState.classList.add('hidden');
+                        mainDashboard.classList.remove('hidden');
+                        filterSection.classList.remove('hidden');
+                        filterSection.classList.add('animate-fadeIn');
+                    };
+                    reader.readAsArrayBuffer(file);
+                }, 500);
+            }
+        }
+        
+        function cleanData(data) {
+            const seenIds = new Set();
+            return data.map(row => {
+                const mappedRow = {};
+                Object.keys(row).forEach(key => {
+                    const normalizedKey = key.trim().toLowerCase();
+                    if (normalizedKey.includes('nama pembeli')) mappedRow.namaPembeli = row[key];
+                    else if (normalizedKey.includes('id transaksi')) mappedRow.idTransaksi = row[key];
+                    else if (normalizedKey.includes('alamat')) mappedRow.alamat = row[key];
+                    else if (normalizedKey.includes('telepon')) mappedRow.telepon = row[key];
+                    else if (normalizedKey.includes('jumlah beli')) mappedRow.jumlahBeli = row[key];
+                    else if (normalizedKey.includes('vendor pengiriman')) mappedRow.vendorPengiriman = row[key];
+                    else if (normalizedKey.includes('total harga')) mappedRow.totalHarga = row[key];
+                    else if (normalizedKey.includes('tanggal transaksi')) mappedRow.tanggalTransaksi = row[key];
+                    else if (normalizedKey.includes('status')) mappedRow.status = row[key];
+                    else if (normalizedKey.includes('metode pembayaran')) mappedRow.metodePembayaran = row[key];
+                    else if (normalizedKey.includes('catatan')) mappedRow.catatan = row[key];
+                });
+                return mappedRow;
+            }).filter(row => {
+                if (!row.idTransaksi || seenIds.has(row.idTransaksi)) return false;
+                seenIds.add(row.idTransaksi);
+                row.totalHarga = Number(String(row.totalHarga).replace(/[^0-9.-]+/g,"")) || 0;
+                row.jumlahBeli = parseInt(row.jumlahBeli, 10) || 0;
+                row.tanggalTransaksi = row.tanggalTransaksi instanceof Date ? row.tanggalTransaksi : new Date(row.tanggalTransaksi);
+                row.status = String(row.status || 'Tidak Diketahui').trim().replace(/\s+/g, ' ').replace(/(?:^|\s)\S/g, a => a.toUpperCase());
+                row.metodePembayaran = String(row.metodePembayaran || 'Lainnya').trim().toUpperCase();
+                row.vendorPengiriman = String(row.vendorPengiriman || 'Tidak Ada').trim().replace(/\s+/g, ' ').replace(/(?:^|\s)\S/g, a => a.toUpperCase());
+                return !isNaN(row.tanggalTransaksi.getTime());
+            });
+        }
+
+        function setupFilters(data) {
+            const dates = data.map(d => d.tanggalTransaksi).filter(d => !isNaN(d));
+            if (dates.length === 0) return;
+            const minDate = new Date(Math.min.apply(null, dates));
+            const maxDate = new Date(Math.max.apply(null, dates));
+            document.getElementById('startDate').value = minDate.toISOString().split('T')[0];
+            document.getElementById('endDate').value = maxDate.toISOString().split('T')[0];
+            const statuses = [...new Set(data.map(d => d.status))].sort();
+            const vendors = [...new Set(data.map(d => d.vendorPengiriman))].sort();
+            document.getElementById('statusFilter').innerHTML = createCheckboxGroup('status', statuses);
+            document.getElementById('vendorFilter').innerHTML = createCheckboxGroup('vendor', vendors);
+        }
+
+        function createCheckboxGroup(name, options) {
+             return `<label class="flex items-center space-x-2 cursor-pointer">
+                        <input type="checkbox" name="${name}" value="all" checked class="rounded bg-gray-600 border-gray-500 text-gray-300 focus:ring-gray-500">
+                        <span class="text-gray-300">(Pilih Semua)</span>
+                    </label>` +
+                    options.map(opt => `
+                <label class="flex items-center space-x-2 cursor-pointer">
+                    <input type="checkbox" name="${name}" value="${opt}" checked class="rounded bg-gray-600 border-gray-500 text-gray-300 focus:ring-gray-500">
+                    <span>${opt}</span>
+                </label>
+            `).join('');
+        }
+        
+        document.addEventListener('change', function(e) {
+            if (e.target.matches('input[type="checkbox"][value="all"]')) {
+                const name = e.target.name;
+                document.querySelectorAll(`input[type="checkbox"][name="${name}"]`).forEach(cb => cb.checked = e.target.checked);
+            } else if (e.target.matches('input[type="checkbox"]')) {
+                 const name = e.target.name;
+                 const allCheckbox = document.querySelector(`input[type="checkbox"][name="${name}"][value="all"]`);
+                 if (allCheckbox) {
+                    const otherCheckboxes = Array.from(document.querySelectorAll(`input[type="checkbox"][name="${name}"]:not([value="all"])`));
+                    allCheckbox.checked = otherCheckboxes.every(cb => cb.checked);
+                 }
+            }
+        });
+
+        function getSelectedFilters() {
+            const startDate = new Date(document.getElementById('startDate').value);
+            startDate.setHours(0,0,0,0);
+            const endDate = new Date(document.getElementById('endDate').value);
+            endDate.setHours(23,59,59,999);
+            const selectedStatuses = Array.from(document.querySelectorAll('#statusFilter input:checked')).map(cb => cb.value).filter(v => v !== 'all');
+            const selectedVendors = Array.from(document.querySelectorAll('#vendorFilter input:checked')).map(cb => cb.value).filter(v => v !== 'all');
+            return { startDate, endDate, selectedStatuses, selectedVendors };
+        }
+
+        function resetFiltersAndApply() {
+            setupFilters(rawData);
+            updateDashboard();
+        }
+        
+        function updateDashboard() {
+            const filters = getSelectedFilters();
+            const filteredData = rawData.filter(d => {
+                const date = d.tanggalTransaksi;
+                return date >= filters.startDate && date <= filters.endDate &&
+                       filters.selectedStatuses.includes(d.status) &&
+                       filters.selectedVendors.includes(d.vendorPengiriman);
+            });
+            Object.values(charts).forEach(chart => chart.destroy());
+            renderSummaryCards(filteredData);
+            renderCharts(filteredData);
+            renderPivotTables(filteredData);
+            applyAnimations();
+        }
+        
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', minimumFractionDigits: 0 }).format(value);
+        }
+        
+        function applyAnimations() {
+            const elementsToAnimate = document.querySelectorAll('.summary-card, .chart-container, .pivot-container');
+            elementsToAnimate.forEach((el, index) => {
+                el.classList.remove('animate-fadeInUp');
+                void el.offsetWidth;
+                el.style.animationDelay = `${index * 100}ms`;
+                el.classList.add('animate-fadeInUp');
+            });
+        }
+
+        function renderSummaryCards(data) {
+            document.getElementById('totalRevenue').textContent = formatCurrency(data.reduce((sum, d) => sum + d.totalHarga, 0));
+            document.getElementById('totalTransactions').textContent = data.length;
+            const totalRevenue = data.reduce((sum, d) => sum + d.totalHarga, 0);
+            const averageTransaction = data.length > 0 ? totalRevenue / data.length : 0;
+            document.getElementById('averageTransaction').textContent = formatCurrency(averageTransaction);
+            document.getElementById('uniqueCustomers').textContent = new Set(data.map(d => d.namaPembeli)).size;
+        }
+
+        function renderCharts(data) {
+            // Classic black and white theme colors for charts
+            const monoChromeColors = ['#f9fafb', '#e5e7eb', '#d1d5db', '#9ca3af', '#6b7280', '#4b5563', '#374151'];
+            const statusColors = { 'Selesai': '#a7f3d0', 'Dibatalkan': '#fecaca', 'Diproses': '#bfdbfe' }; // Lighter, pastel-like for dark bg
+
+            Chart.defaults.color = '#9ca3af'; // Default text color for charts
+            Chart.defaults.borderColor = '#374151'; // Default border color for axes
+
+            const dailyRevenue = data.reduce((acc, d) => {
+                const date = d.tanggalTransaksi.toISOString().split('T')[0];
+                acc[date] = (acc[date] || 0) + d.totalHarga; return acc;
+            }, {});
+            const sortedDates = Object.keys(dailyRevenue).sort();
+            charts.revenueTrend = new Chart('revenueTrendChart', {
+                type: 'line', data: { labels: sortedDates, datasets: [{ label: 'Pendapatan', data: sortedDates.map(date => dailyRevenue[date]), borderColor: '#e5e7eb', backgroundColor: 'rgba(229, 231, 235, 0.1)', fill: true, tension: 0.3 }] }, options: { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'day' }, grid: { color: '#374151'} }, y: { grid: { color: '#374151'} } } }
+            });
+            const paymentData = data.reduce((acc, d) => { acc[d.metodePembayaran] = (acc[d.metodePembayaran] || 0) + 1; return acc; }, {});
+            charts.paymentMethod = new Chart('paymentMethodChart', {
+                type: 'pie', data: { labels: Object.keys(paymentData), datasets: [{ data: Object.values(paymentData), backgroundColor: monoChromeColors }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top', labels: { color: '#d1d5db' } } } }
+            });
+            const vendorData = data.reduce((acc, d) => { acc[d.vendorPengiriman] = (acc[d.vendorPengiriman] || 0) + 1; return acc; }, {});
+            charts.vendor = new Chart('vendorChart', {
+                type: 'bar', 
+                data: { 
+                    labels: Object.keys(vendorData), 
+                    datasets: [{ 
+                        label: 'Jumlah Transaksi', 
+                        data: Object.values(vendorData), 
+                        backgroundColor: '#9ca3af' 
+                    }] 
+                }, 
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false, 
+                    indexAxis: 'y', 
+                    plugins: { 
+                        legend: { display: false } 
+                    }, 
+                    scales: { 
+                        x: { 
+                            type: 'logarithmic', // Use logarithmic scale
+                            grid: { color: '#374151' }
+                        }, 
+                        y: { 
+                            grid: { 
+                                color: '#374151' 
+                            } 
+                        } 
+                    } 
+                }
+            });
+            const statusData = data.reduce((acc, d) => { acc[d.status] = (acc[d.status] || 0) + 1; return acc; }, {});
+            charts.status = new Chart('statusChart', {
+                type: 'bar', data: { labels: Object.keys(statusData), datasets: [{ label: 'Jumlah Transaksi', data: Object.values(statusData), backgroundColor: Object.keys(statusData).map(status => statusColors[status] || '#6b7280') }] }, options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: { grid: { color: '#374151' } }, y: { grid: { color: '#374151' } } } }
+            });
+        }
+        
+        function renderPivotTables(data) {
+            const pivot1 = data.reduce((acc, d) => { acc[d.metodePembayaran] = (acc[d.metodePembayaran] || 0) + d.totalHarga; return acc; }, {});
+            document.getElementById('pivotRevenuePayment').innerHTML = generateHtmlTable( ['Metode Pembayaran', 'Total Pendapatan'], Object.entries(pivot1).map(([key, value]) => [key, formatCurrency(value)]) );
+            const pivot2 = data.reduce((acc, d) => { if (!acc[d.metodePembayaran]) acc[d.metodePembayaran] = {}; acc[d.metodePembayaran][d.status] = (acc[d.metodePembayaran][d.status] || 0) + 1; return acc; }, {});
+            const allStatuses = [...new Set(data.map(d => d.status))].sort();
+            const pivot2Data = Object.entries(pivot2).map(([method, statuses]) => [method, ...allStatuses.map(s => statuses[s] || 0)]);
+            document.getElementById('pivotStatusPayment').innerHTML = generateHtmlTable( ['Metode Pembayaran', ...allStatuses], pivot2Data );
+            const pivot3 = data.reduce((acc, d) => { const date = d.tanggalTransaksi.toISOString().split('T')[0]; acc[date] = (acc[date] || 0) + d.jumlahBeli; return acc; }, {});
+            document.getElementById('pivotDailySales').innerHTML = generateHtmlTable( ['Tanggal', 'Jumlah Beli'], Object.entries(pivot3).sort((a, b) => a[0].localeCompare(b[0])) );
+        }
+
+        function generateHtmlTable(headers, rows) {
+            const head = `<thead><tr class="border-b border-gray-600">${headers.map(h => `<th class="p-2 text-left font-semibold text-gray-300">${h}</th>`).join('')}</tr></thead>`;
+            const body = `<tbody>${rows.map((row, i) => `<tr class="border-b border-gray-700">${row.map(cell => `<td class="p-2 text-gray-400">${cell}</td>`).join('')}</tr>`).join('')}</tbody>`;
+            return head + body;
+        }
+    </script>
+</body>
+</html>
